@@ -9,6 +9,7 @@ FROM debian:bullseye-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y libssl-dev netcat
 COPY startup.sh ./
+RUN chmod +X ./startup.sh
 COPY --from=builder /app/target/release/radiko-cacher ./
 CMD ["./startup.sh"]
 
