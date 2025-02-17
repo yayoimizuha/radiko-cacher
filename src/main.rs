@@ -14,7 +14,7 @@ use firestore::{FirestoreDb, FirestoreDbOptions};
 use kdam::tqdm;
 use unicode_normalization::UnicodeNormalization;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json:: Value;
+use serde_json::Value;
 use tokio::join;
 use tokio_stream::StreamExt;
 
@@ -326,9 +326,9 @@ async fn main() {
         if !res.is_empty() {
             let prog = program.clone();
             println!("{},{}:{:?}", prog.title.clone(), prog.pfm.clone().unwrap_or("".to_owned()), res);
-            println!("{:?}", prog.on_air_music.clone());
+            println!("{}", serde_json::to_string(&program.on_air_music.clone()).unwrap());
             for re in res {
-                println!("{}", serde_json::to_string(&program.clone()).unwrap());
+                // println!("{}", serde_json::to_string(&program.clone()).unwrap());
 
                 let parent = firestore_db.parent_path("hello-radiko-data", "programs").unwrap();
                 firestore_db
