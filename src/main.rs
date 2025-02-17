@@ -47,6 +47,7 @@ struct RadioProgram {
     #[serde(serialize_with = "serialize_td", deserialize_with = "deserialize_td")]
     dur: TimeDelta,
     title: String,
+    img: String,
     info: Option<String>,
     desc: Option<String>,
     pfm: Option<String>,
@@ -96,6 +97,7 @@ impl RadioProgram {
             to: DateTime::from(DateTime::parse_from_str((hash_map.get("to").context("to not found.").unwrap().clone().unwrap() + " +0900").as_str(), "%Y%m%d%H%M%S %z")?),
             dur: TimeDelta::seconds(hash_map.get("dur").context("dur not found.")?.clone().unwrap().parse::<i64>()?),
             title: hash_map.get("title").context("title not found.")?.clone().unwrap().nfkc().collect::<_>(),
+            img: hash_map.get("img").context("img not found.")?.clone().unwrap().nfkc().collect::<_>(),
             info: hash_map.get("info").context("info not found.")?.clone().and_then(|s| {
                 let body = format!("<body>{s}</body>");
                 let dom = parse_document(RcDom::default(), Default::default()).from_utf8().read_from(&mut body.as_bytes()).unwrap();
@@ -278,6 +280,7 @@ async fn main() {
                         NodeData::Element { name, .. } => {
                             match name.local.deref() {
                                 "title" => { Some(("title".to_owned(), get_below_string(child))) }
+                                "img" => { Some(("img".to_owned(), get_below_string(child))) }
                                 "info" => { Some(("info".to_owned(), get_below_string(child))) }
                                 "desc" => { Some(("desc".to_owned(), get_below_string(child))) }
                                 "pfm" => { Some(("pfm".to_owned(), get_below_string(child))) }
