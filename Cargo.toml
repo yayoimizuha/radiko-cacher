@@ -1,0 +1,19 @@
+[package]
+name = "radiko-cacher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.12.12", features = ["rustls-tls", "json"], default-features = false }
+xml5ever = { version = "0.20.0" }
+markup5ever_rcdom = { version = "0.5.0-unofficial" }
+tokio = { version = "1.43.0", features = ["rt", "rt-multi-thread", "macros"] }
+anyhow = { version = "1.0.95" }
+chrono = { version = "0.4.39" }
+unicode-normalization = { version = "0.1.24" }
+serde_json = { version = "1.0.138" }
+kdam = { version = "0.6.2" }
+#futures = { version = "0.3.31" }
+serde = { version = "1.0.217", features = ["derive"] }
+firestore = { version = "0.44.1" }
+tokio-stream = "0.1.17"
