@@ -1,2 +1,1 @@
-nc -l 8000 &
-./radiko-cacher
+nc -l 8000 & ./radiko-cacher
