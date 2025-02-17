@@ -7,7 +7,7 @@ RUN cargo build --release
 
 FROM debian:stable-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y libssl-dev netcat-traditional
+RUN apt-get update && apt-get install -y libssl-dev netcat-traditional ca-certificates
 COPY startup.sh ./
 RUN chmod +x ./startup.sh
 COPY --from=builder /app/target/release/radiko-cacher ./
