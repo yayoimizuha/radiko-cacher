@@ -1,19 +1,23 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use reqwest::{Client, Url};
 use xml5ever::driver::{parse_document, XmlParseOpts};
 use xml5ever::tendril::*;
 use anyhow::{Result, Context};
-use chrono::{Duration, NaiveDate, Local, DateTime, TimeDelta};
-use std::fmt;
+use chrono::{Duration, NaiveDate, Local, DateTime, TimeDelta, Utc};
+use std::{env, fmt};
 use std::fmt::Formatter;
-use firestore::FirestoreDb;
+use std::path::PathBuf;
+use std::str::FromStr;
+use firestore::{FirestoreDb, FirestoreDbOptions};
+use firestore::struct_path::paths;
 use kdam::tqdm;
 use unicode_normalization::UnicodeNormalization;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::join;
+use tokio_stream::StreamExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RadioChannel {
@@ -33,14 +37,14 @@ impl RadioChannel {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct RadioProgram {
     radio_channel: RadioChannel,
     id: u64,
-    #[serde(serialize_with = "serialize_dt", deserialize_with = "deserialize_dt")]
-    ft: DateTime<Local>,
-    #[serde(serialize_with = "serialize_dt", deserialize_with = "deserialize_dt")]
-    to: DateTime<Local>,
+    #[serde(with = "firestore::serialize_as_timestamp")]
+    ft: DateTime<Utc>,
+    #[serde(with = "firestore::serialize_as_timestamp")]
+    to: DateTime<Utc>,
     #[serde(serialize_with = "serialize_td", deserialize_with = "deserialize_td")]
     dur: TimeDelta,
     title: String,
@@ -48,26 +52,28 @@ struct RadioProgram {
     desc: Option<String>,
     pfm: Option<String>,
     on_air_music: Vec<OnAirMusic>,
+    #[serde(with = "firestore::serialize_as_timestamp")]
+    expire_at: DateTime<Utc>,
 }
 
-pub fn serialize_dt<S>(datetime: &DateTime<Local>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let s = datetime.to_rfc3339(); // RFC 3339形式で文字列に変換
-    serializer.serialize_str(&s) // 文字列としてシリアル化
-}
-
-// デシリアライザ
-pub fn deserialize_dt<'de, D>(deserializer: D) -> Result<DateTime<Local>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    DateTime::parse_from_rfc3339(&String::deserialize(deserializer)?)
-        .map(|dt| dt.with_timezone(&Local))
-        .map_err(serde::de::Error::custom)
-}
-
+// pub fn serialize_dt<S>(datetime: &DateTime<Local>, serializer: S) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+// {
+//     let s = datetime.to_rfc3339(); // RFC 3339形式で文字列に変換
+//     serializer.serialize_str(&s) // 文字列としてシリアル化
+// }
+//
+// // デシリアライザ
+// pub fn deserialize_dt<'de, D>(deserializer: D) -> Result<DateTime<Local>, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     DateTime::parse_from_rfc3339(&String::deserialize(deserializer)?)
+//         .map(|dt| dt.with_timezone(&Local))
+//         .map_err(serde::de::Error::custom)
+// }
+//
 pub fn serialize_td<S>(timedelta: &TimeDelta, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -88,7 +94,7 @@ impl RadioProgram {
             radio_channel,
             id: hash_map.get("id").context("id not found.")?.clone().unwrap().parse::<u64>()?,
             ft: DateTime::from(DateTime::parse_from_str((hash_map.get("ft").context("ft not found.").unwrap().clone().unwrap() + " +0900").as_str(), "%Y%m%d%H%M%S %z")?),
-            to: DateTime::from(DateTime::parse_from_str((hash_map.get("to").context("ft not found.").unwrap().clone().unwrap() + " +0900").as_str(), "%Y%m%d%H%M%S %z")?),
+            to: DateTime::from(DateTime::parse_from_str((hash_map.get("to").context("to not found.").unwrap().clone().unwrap() + " +0900").as_str(), "%Y%m%d%H%M%S %z")?),
             dur: TimeDelta::seconds(hash_map.get("dur").context("dur not found.")?.clone().unwrap().parse::<i64>()?),
             title: hash_map.get("title").context("title not found.")?.clone().unwrap().nfkc().collect::<_>(),
             info: hash_map.get("info").context("info not found.")?.clone().and_then(|s| {
@@ -105,6 +111,7 @@ impl RadioProgram {
             }),
             pfm: hash_map.get("pfm").context("pfm not found.")?.clone().and_then(|s| Some(s.nfkc().collect::<_>())),
             on_air_music: vec![],
+            expire_at: DateTime::from(DateTime::parse_from_str((hash_map.get("to").context("to not found.").unwrap().clone().unwrap() + " +0900").as_str(), "%Y%m%d%H%M%S %z")?) + TimeDelta::weeks(2),
         })
     }
     fn app_url_scheme(&self) -> String {
@@ -313,11 +320,57 @@ async fn main() {
         programs.push(RadioProgram { on_air_music: on_air.await, ..program })
     };
     let member_json: Value = serde_json::from_str(include_str!("members.json").nfkc().collect::<String>().as_str()).unwrap();
-    let firestore_db = FirestoreDb::
+    let firestore_db = FirestoreDb::with_options_service_account_key_file(FirestoreDbOptions::new("hello-radiko".to_owned()), env::var("FIRESTORE_CRED_JSON").unwrap().parse().unwrap()).await.unwrap();
+    // let exist_fields = firestore_db.fluent().list().from("hello-radiko-data").stream_all().await.unwrap().collect::<Vec<_>>().await;
+    // 'outer: for name in member_json.as_object().unwrap().into_iter().map(|(k, v)| {
+    //     let mut members = v.as_object().unwrap().into_iter().map(|(k, v)| k).collect::<Vec<_>>();
+    //     members.push(k);
+    //     members
+    // }).flatten() {
+    //     if name == "OG" { continue 'outer; }
+    //     for field in &exist_fields {
+    //         let field_name = field.name.split("/").collect::<Vec<_>>()[6];
+    //         if field_name == name.as_str() {
+    //             continue 'outer;
+    //         }
+    //     }
+    //     #[derive(Serialize, Deserialize)]
+    //     struct Empty {}
+    //     firestore_db
+    //         .fluent()
+    //         .insert()
+    //         .into("hello-radiko-data")
+    //         .document_id(name.clone())
+    //         .object(&Empty {})
+    //         .execute::<Empty>().await.unwrap();
+    // }
     for program in programs {
         let res = search_artist(program.clone(), member_json.clone());
         if !res.is_empty() {
-            println!("{},{}:{:?}", program.title, program.pfm.unwrap_or("".to_owned()), res)
+            let prog = program.clone();
+            println!("{},{}:{:?}", prog.title.clone(), prog.pfm.clone().unwrap_or("".to_owned()), res);
+            println!("{:?}", prog.on_air_music.clone());
+            for re in res {
+                println!("{}", serde_json::to_string(&program.clone()).unwrap());
+                // let parent = firestore_db.parent_path("hello-radiko-data",re).unwrap();
+                // firestore_db
+                //     .fluent()
+                //     .update()
+                //     .in_col(&prog.id.to_string().as_str())
+                //     .document_id("program")
+                //     .parent(parent)
+                //     .object(&prog.clone())
+                //     .execute::<RadioProgram>().await.unwrap();
+                let parent = firestore_db.parent_path("hello-radiko-data", "programs").unwrap();
+                firestore_db
+                    .fluent()
+                    .update()
+                    .in_col(re.as_str())
+                    .document_id(&prog.id.to_string().as_str())
+                    .parent(parent)
+                    .object(&prog.clone())
+                    .execute::<RadioProgram>().await.unwrap();
+            }
         }
     }
 }
