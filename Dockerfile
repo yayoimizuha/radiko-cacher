@@ -5,7 +5,7 @@ COPY Cargo.toml ./
 COPY src ./src
 RUN cargo build --release
 
-FROM debian:bullseye-slim
+FROM debian:stable-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y libssl-dev netcat
 COPY startup.sh ./
