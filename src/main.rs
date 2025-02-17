@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ops::Deref;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use reqwest::{Client, Url};
@@ -8,14 +8,12 @@ use anyhow::{Result, Context};
 use chrono::{Duration, NaiveDate, Local, DateTime, TimeDelta, Utc};
 use std::{env, fmt};
 use std::fmt::Formatter;
-use std::path::PathBuf;
 use std::str::FromStr;
 use firestore::{FirestoreDb, FirestoreDbOptions};
-use firestore::struct_path::paths;
 use kdam::tqdm;
 use unicode_normalization::UnicodeNormalization;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json, Value};
+use serde_json:: Value;
 use tokio::join;
 use tokio_stream::StreamExt;
 
