@@ -269,7 +269,7 @@ async fn main() {
 
     let mut programs = vec![];
     for (channel, req) in tqdm!(program_joiner.into_iter(),desc="Parse XML") {
-        if channel.id != "JORF" { continue; }
+        // if channel.id != "JORF" { continue; }
         let doc = parse_document(RcDom::default(), XmlParseOpts::default()).from_utf8().read_from(&mut req.await.unwrap().text().await.unwrap().as_bytes()).unwrap();
         let programs_hashmaps = dig_xml(doc.document, vec!["radiko", "stations", "station", "progs", "prog"], |handle| match &handle.data {
             NodeData::Element { attrs, .. } => {
