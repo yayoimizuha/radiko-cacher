@@ -8,6 +8,7 @@ use anyhow::{Result, Context};
 use chrono::{Duration, NaiveDate, Local, DateTime, TimeDelta, Utc};
 use std::{env, fmt};
 use std::fmt::Formatter;
+use std::path::PathBuf;
 use std::str::FromStr;
 use firestore::{FirestoreDb, FirestoreDbOptions};
 use kdam::tqdm;
@@ -268,7 +269,7 @@ async fn main() {
 
     let mut programs = vec![];
     for (channel, req) in tqdm!(program_joiner.into_iter(),desc="Parse XML") {
-        // if channel.id != "JORF" { continue; }
+        if channel.id != "JORF" { continue; }
         let doc = parse_document(RcDom::default(), XmlParseOpts::default()).from_utf8().read_from(&mut req.await.unwrap().text().await.unwrap().as_bytes()).unwrap();
         let programs_hashmaps = dig_xml(doc.document, vec!["radiko", "stations", "station", "progs", "prog"], |handle| match &handle.data {
             NodeData::Element { attrs, .. } => {
@@ -318,30 +319,8 @@ async fn main() {
         programs.push(RadioProgram { on_air_music: on_air.await, ..program })
     };
     let member_json: Value = serde_json::from_str(include_str!("members.json").nfkc().collect::<String>().as_str()).unwrap();
-    let firestore_db = FirestoreDb::with_options_service_account_key_file(FirestoreDbOptions::new("hello-radiko".to_owned()), env::var("FIRESTORE_CRED_JSON").unwrap().parse().unwrap()).await.unwrap();
-    // let exist_fields = firestore_db.fluent().list().from("hello-radiko-data").stream_all().await.unwrap().collect::<Vec<_>>().await;
-    // 'outer: for name in member_json.as_object().unwrap().into_iter().map(|(k, v)| {
-    //     let mut members = v.as_object().unwrap().into_iter().map(|(k, v)| k).collect::<Vec<_>>();
-    //     members.push(k);
-    //     members
-    // }).flatten() {
-    //     if name == "OG" { continue 'outer; }
-    //     for field in &exist_fields {
-    //         let field_name = field.name.split("/").collect::<Vec<_>>()[6];
-    //         if field_name == name.as_str() {
-    //             continue 'outer;
-    //         }
-    //     }
-    //     #[derive(Serialize, Deserialize)]
-    //     struct Empty {}
-    //     firestore_db
-    //         .fluent()
-    //         .insert()
-    //         .into("hello-radiko-data")
-    //         .document_id(name.clone())
-    //         .object(&Empty {})
-    //         .execute::<Empty>().await.unwrap();
-    // }
+    let firestore_db = FirestoreDb::with_options_service_account_key_file(FirestoreDbOptions::new("hello-radiko".to_owned()), PathBuf::from(env::var("FIRESTORE_CRED_JSON").unwrap())).await.unwrap();
+
     for program in programs {
         let res = search_artist(program.clone(), member_json.clone());
         if !res.is_empty() {
@@ -350,15 +329,7 @@ async fn main() {
             println!("{:?}", prog.on_air_music.clone());
             for re in res {
                 println!("{}", serde_json::to_string(&program.clone()).unwrap());
-                // let parent = firestore_db.parent_path("hello-radiko-data",re).unwrap();
-                // firestore_db
-                //     .fluent()
-                //     .update()
-                //     .in_col(&prog.id.to_string().as_str())
-                //     .document_id("program")
-                //     .parent(parent)
-                //     .object(&prog.clone())
-                //     .execute::<RadioProgram>().await.unwrap();
+
                 let parent = firestore_db.parent_path("hello-radiko-data", "programs").unwrap();
                 firestore_db
                     .fluent()
