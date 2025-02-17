@@ -1,7 +1,7 @@
 FROM rust:latest as builder
 LABEL authors="tomokazu"
 WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 RUN cargo build --release
 COPY src ./src
 RUN cargo build --release
