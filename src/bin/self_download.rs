@@ -277,7 +277,7 @@ async fn main() {
             let prog = program.clone();
             println!("{},{}:{:?}", prog.title.clone(), prog.pfm.clone().unwrap_or("".to_owned()), res);
             println!("{}", serde_json::to_string(&program.clone()).unwrap());
-            process::Command::new("yt-dlp").args(vec![format!("https://radiko.jp/#!/ts/{}/{}", prog.radio_channel.id, prog.ft)]).spawn().unwrap().wait().unwrap();
+            process::Command::new("yt-dlp").args(vec!["--no-progress".to_owned(), format!("https://radiko.jp/#!/ts/{}/{}", prog.radio_channel.id, prog.ft)]).spawn().unwrap().wait().unwrap();
         }
     }
 }
